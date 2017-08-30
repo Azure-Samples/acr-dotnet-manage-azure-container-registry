@@ -1,0 +1,2 @@
+C:\Sources\dotnet-samples\acr-dotnet-manage-azure-container-registry\bin\Debug\netstandard1.6\ManageContainerRegistry.deps.json
+C:\Sources\dotnet-samples\acr-dotnet-manage-azure-container-registry\obj\Debug\netstandard1.6\ManageContainerRegistry.csproj.CoreCompileInputs.cache

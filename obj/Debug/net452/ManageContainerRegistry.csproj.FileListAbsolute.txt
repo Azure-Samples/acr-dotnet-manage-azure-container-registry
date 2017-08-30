@@ -1,0 +1,4 @@
+C:\Sources\dotnet-samples\acr-dotnet-manage-azure-container-registry\bin\Debug\net452\ManageContainerRegistry.runtimeconfig.json
+C:\Sources\dotnet-samples\acr-dotnet-manage-azure-container-registry\bin\Debug\net452\ManageContainerRegistry.runtimeconfig.dev.json
+C:\Sources\dotnet-samples\acr-dotnet-manage-azure-container-registry\obj\Debug\net452\ManageContainerRegistry.csproj.ManageContainerRegistry.exe.config
+C:\Sources\dotnet-samples\acr-dotnet-manage-azure-container-registry\obj\Debug\net452\ManageContainerRegistry.csproj.CoreCompileInputs.cache
