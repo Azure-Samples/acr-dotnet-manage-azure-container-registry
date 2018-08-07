@@ -1,10 +1,10 @@
 ---
-services: Acr
-platforms: .Net
+services: Container-Registry
+platforms: dotnet
 author: milismsft
 ---
 
-# Getting Started with Acr - Manage Container Registry - in .Net #
+# Getting started on managing Azure Container Registry using C# #
 
           Azure Container Registry sample for managing container registry.
            - Create an Azure Container Registry to be used for holding the Docker images
@@ -20,7 +20,7 @@ author: milismsft
 
 To run this sample:
 
-Set the environment variable `AZURE_AUTH_LOCATION` with the full path for an auth file. See [how to create an auth file](https://github.com/Azure/azure-sdk-for-net/blob/Fluent/AUTH.md).
+Set the environment variable `AZURE_AUTH_LOCATION` with the full path for an auth file. See [how to create an auth file](https://github.com/Azure/azure-libraries-for-java/blob/master/AUTH.md).
 
     git clone https://github.com/Azure-Samples/acr-dotnet-manage-azure-container-registry.git
 
