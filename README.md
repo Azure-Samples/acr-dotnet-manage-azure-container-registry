@@ -25,10 +25,10 @@ Set the environment variable `AZURE_AUTH_LOCATION` with the full path for an aut
     git clone https://github.com/Azure-Samples/acr-dotnet-manage-azure-container-registry.git
 
     cd acr-dotnet-manage-azure-container-registry
-
-    dotnet restore
-
-    dotnet run
+  
+    dotnet build
+    
+    bin\Debug\net452\ManageContainerRegistry.exe
 
 ## More information ##
 
