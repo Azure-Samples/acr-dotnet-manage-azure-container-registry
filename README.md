@@ -7,6 +7,7 @@ products:
 extensions:
 - services: Container-Registry
 - platforms: dotnet
+description: "Azure Container Registry sample for managing container registry."
 ---
 
 # Getting started on managing Azure Container Registry using C# #
