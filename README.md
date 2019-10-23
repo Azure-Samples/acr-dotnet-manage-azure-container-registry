@@ -10,6 +10,7 @@ extensions:
 - services: Container-Registry
 - platforms: dotnet
 description: "Azure Container Registry sample for managing container registry."
+urlFragment: getting-started-on-managing-azure-container-registry-using-c
 ---
 
 # Get started managing Azure Container Registry (C#)
