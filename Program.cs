@@ -14,6 +14,10 @@ using Azure.ResourceManager.Network;
 using Azure.ResourceManager.Compute.Models;
 using Azure.ResourceManager.Compute;
 using System.Net.NetworkInformation;
+using Docker.DotNet;
+using Azure.ResourceManager.ContainerRegistry.Models;
+using Azure.ResourceManager.ContainerRegistry;
+using System;
 
 namespace ManageContainerRegistry
 {
@@ -34,7 +38,7 @@ namespace ManageContainerRegistry
          */
         public static async Task RunSample(ArmClient client)
         {
-            string rgName = Utilities.CreateRandomName("DnsTemplateRG");
+            string rgName = Utilities.CreateRandomName("ACRTemplateRG");
             string acrName = Utilities.CreateRandomName("acrsample");
             string saName = Utilities.CreateRandomName("sa");
             string dockerImageName = "hello-world";
@@ -44,26 +48,40 @@ namespace ManageContainerRegistry
 
             try
             {
+                // Get default subscription
+                SubscriptionResource subscription = await client.GetDefaultSubscriptionAsync();
+
+                // Create a resource group in the EastUS region
+                Utilities.Log($"creating resource group...");
+                ArmOperation<ResourceGroupResource> rgLro = await subscription.GetResourceGroups().CreateOrUpdateAsync(WaitUntil.Completed, rgName, new ResourceGroupData(AzureLocation.EastUS));
+                ResourceGroupResource resourceGroup = rgLro.Value;
+                _resourceGroupId = resourceGroup.Id;
+                Utilities.Log("Created a resource group with name: " + resourceGroup.Data.Name);
+
                 //=============================================================
                 // Create an Azure Container Registry to store and manage private Docker container images
 
                 Utilities.Log("Creating an Azure Container Registry");
 
-                IRegistry azureRegistry = azure.ContainerRegistries.Define(acrName)
-                        .WithRegion(region)
-                        .WithNewResourceGroup(rgName)
-                        .WithBasicSku()
-                        .WithRegistryNameAsAdminUser()
-                        .Create();
+                var registryData = new ContainerRegistryData(resourceGroup.Data.Location, new ContainerRegistrySku(ContainerRegistrySkuName.Premium))
+                {
+                    IsAdminUserEnabled = true,
+                    Sku = new ContainerRegistrySku(ContainerRegistrySkuName.Basic),
+                    Tags =
+                    {
+                        { "key1","value1"},
+                        { "key2","value2"}
+                    }
+                };
+                var lro = await resourceGroup.GetContainerRegistries().CreateOrUpdateAsync(WaitUntil.Completed, acrName, registryData);
+                ContainerRegistryResource containerRegistry = lro.Value;
 
-                Utilities.Print(azureRegistry);
-
-                var acrCredentials = azureRegistry.GetCredentials();
+                var acrCredentials = await containerRegistry.GetCredentialsAsync();
 
                 //=============================================================
                 // Create a Docker client that will be used to push/pull images to/from the Azure Container Registry
 
-                using (DockerClient dockerClient = DockerUtils.CreateDockerClient(azure, rgName, region))
+                using (DockerClient dockerClient = await DockerUtils.CreateDockerClient(resourceGroup))
                 {
                     var pullImgResult = dockerClient.Images.PullImage(
                         new Docker.DotNet.Models.ImagesPullParameters()
@@ -103,8 +121,8 @@ namespace ManageContainerRegistry
 
                     //=============================================================
                     // Commit the new container
-
-                    string privateRepoUrl = azureRegistry.LoginServerUrl + "/" + dockerImageRelPath + "/" + dockerContainerName;
+                    
+                    string privateRepoUrl = containerRegistry.Data.LoginServer + "/" + dockerImageRelPath + "/" + dockerContainerName;
                     Utilities.Log("Commiting image at: " + privateRepoUrl);
 
                     var commitContainerResult = dockerClient.Miscellaneous.CommitContainerChanges(
@@ -126,9 +144,9 @@ namespace ManageContainerRegistry
                         },
                         new Docker.DotNet.Models.AuthConfig()
                         {
-                            Username = acrCredentials.Username,
-                            Password = acrCredentials.AccessKeys[AccessKeyType.Primary],
-                            ServerAddress = azureRegistry.LoginServerUrl
+                            Username = acrCredentials.Value.Username,
+                            Password = acrCredentials.Value.Passwords.First().Value,
+                            ServerAddress = containerRegistry.Data.LoginServer
                         });
 
                     //=============================================================
@@ -142,9 +160,9 @@ namespace ManageContainerRegistry
                         },
                         new Docker.DotNet.Models.AuthConfig()
                         {
-                            Username = acrCredentials.Username,
-                            Password = acrCredentials.AccessKeys[AccessKeyType.Primary],
-                            ServerAddress = azureRegistry.LoginServerUrl
+                            Username = acrCredentials.Value.Username,
+                            Password = acrCredentials.Value.Passwords.First().Value,
+                            ServerAddress = containerRegistry.Data.LoginServer
                         });
 
                     Utilities.Log("List Docker images for: " + dockerClient.Configuration.EndpointBaseUri.AbsoluteUri);
