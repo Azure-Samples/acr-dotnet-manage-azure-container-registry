@@ -70,32 +70,41 @@ namespace Azure.ResourceManager.Samples.Common
             return list;
         }
 
-        public static async Task<VirtualNetworkResource> CreateVirtualNetwork(ResourceGroupResource resourceGroup, string vnetName)
+        public static async Task<PublicIPAddressResource> CreatePublicIP(ResourceGroupResource resourceGroup)
         {
-            vnetName = string.IsNullOrEmpty(vnetName) ? CreateRandomName("vnet") : vnetName;
+            string publicIPName = CreateRandomName("pip");
 
-            Utilities.Log("Creating virtual network...");
+            var publicIPInput = new PublicIPAddressData()
+            {
+                Location = resourceGroup.Data.Location,
+                PublicIPAllocationMethod = NetworkIPAllocationMethod.Static,
+            };
+            var publicIPLro = await resourceGroup.GetPublicIPAddresses().CreateOrUpdateAsync(WaitUntil.Completed, publicIPName, publicIPInput);
+            return publicIPLro.Value;
+        }
+
+        public static async Task<NetworkInterfaceResource> CreateNetworkInterface(ResourceGroupResource resourceGroup, ResourceIdentifier publicIPId)
+        {
+            string vnetName = CreateRandomName("vnet");
+            string nicName = CreateRandomName("nic");
+
+            // Create Network
             VirtualNetworkData vnetInput = new VirtualNetworkData()
             {
                 Location = resourceGroup.Data.Location,
                 AddressPrefixes = { "10.10.0.0/16" },
                 Subnets =
-                    {
-                        new SubnetData() { Name = "subnet1", AddressPrefix = "10.10.1.0/24"},
-                        new SubnetData() { Name = "subnet2", AddressPrefix = "10.10.2.0/24"},
-                    },
+                {
+                    new SubnetData() { Name = "default", AddressPrefix = "10.10.1.0/24" },
+                    new SubnetData() { Name = "subnet1", AddressPrefix = "10.10.2.0/24" },
+                    new SubnetData() { Name = "subnet2", AddressPrefix = "10.10.3.0/24" }
+                }
             };
             var vnetLro = await resourceGroup.GetVirtualNetworks().CreateOrUpdateAsync(WaitUntil.Completed, vnetName, vnetInput);
-            Utilities.Log($"Created a virtual network: {vnetLro.Value.Data.Name}");
-            return vnetLro.Value;
-        }
+            VirtualNetworkResource vnet = vnetLro.Value;
 
-        public static async Task<NetworkInterfaceResource> CreateNetworkInterface(ResourceGroupResource resourceGroup, ResourceIdentifier subnetId, ResourceIdentifier publicIpId, string nicName)
-        {
-            nicName = string.IsNullOrEmpty(nicName) ? CreateRandomName("nic") : nicName;
-
-            Utilities.Log($"Creating network interface...");
-            var nicInput = new NetworkInterfaceData()
+            // Create a network interface
+            var subnetInput = new NetworkInterfaceData()
             {
                 Location = resourceGroup.Data.Location,
                 IPConfigurations =
@@ -106,17 +115,16 @@ namespace Azure.ResourceManager.Samples.Common
                             PrivateIPAllocationMethod = NetworkIPAllocationMethod.Dynamic,
                             Subnet = new SubnetData()
                             {
-                                Id = subnetId
+                                Id = vnet.Data.Subnets[0].Id,
                             },
                             PublicIPAddress = new PublicIPAddressData()
                             {
-                                Id  = publicIpId
-                            }
+                                Id = publicIPId
+                            },
                         }
                     }
             };
-            var networkInterfaceLro = await resourceGroup.GetNetworkInterfaces().CreateOrUpdateAsync(WaitUntil.Completed, nicName, nicInput);
-            Utilities.Log($"Created network interface: {networkInterfaceLro.Value.Data.Name}");
+            var networkInterfaceLro = await resourceGroup.GetNetworkInterfaces().CreateOrUpdateAsync(WaitUntil.Completed, nicName, subnetInput);
             return networkInterfaceLro.Value;
         }
 
