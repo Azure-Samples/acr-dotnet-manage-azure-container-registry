@@ -25,7 +25,6 @@ namespace ManageContainerRegistry
     {
         private static ResourceIdentifier? _resourceGroupId = null;
 
-
         /**
          * Azure Container Registry sample for managing container registry.
          *  - Create an Azure Container Registry to be used for holding the Docker images
