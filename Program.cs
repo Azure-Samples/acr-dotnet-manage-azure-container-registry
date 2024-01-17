@@ -1,22 +1,29 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
+using Azure;
+using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager.Resources.Models;
+using Azure.ResourceManager.Samples.Common;
+using Azure.ResourceManager.Resources;
+using Azure.ResourceManager;
+using System.Net;
+using Azure.ResourceManager.Network.Models;
+using Azure.ResourceManager.Network;
+using Azure.ResourceManager.Compute.Models;
+using Azure.ResourceManager.Compute;
+using System.Net.NetworkInformation;
 using Docker.DotNet;
-using Microsoft.Azure.Management.ContainerRegistry.Fluent;
-using Microsoft.Azure.Management.ContainerRegistry.Fluent.Models;
-using Microsoft.Azure.Management.Fluent;
-using Microsoft.Azure.Management.ResourceManager.Fluent;
-using Microsoft.Azure.Management.ResourceManager.Fluent.Authentication;
-using Microsoft.Azure.Management.ResourceManager.Fluent.Core;
-using Microsoft.Azure.Management.Samples.Common;
+using Azure.ResourceManager.ContainerRegistry.Models;
+using Azure.ResourceManager.ContainerRegistry;
 using System;
 
 namespace ManageContainerRegistry
 {
     public class Program
     {
-        private static readonly Region Region = Region.USEast2;
-
+        private static ResourceIdentifier? _resourceGroupId = null;
 
         /**
          * Azure Container Registry sample for managing container registry.
@@ -28,12 +35,11 @@ namespace ManageContainerRegistry
          *      to/from an Azure Container Registry
          *  - Create a new Docker container from an image that was pulled from Azure Container Registry
          */
-        public static void RunSample(IAzure azure)
+        public static async Task RunSample(ArmClient client)
         {
-            string rgName = SdkContext.RandomResourceName("rgACR", 15);
-            string acrName = SdkContext.RandomResourceName("acrsample", 20);
-            string saName = SdkContext.RandomResourceName("sa", 20);
-            Region region = Region.USEast2;
+            string rgName = Utilities.CreateRandomName("ACRTemplateRG");
+            string acrName = Utilities.CreateRandomName("acrsample");
+            string saName = Utilities.CreateRandomName("sa");
             string dockerImageName = "hello-world";
             string dockerImageTag = "latest";
             string dockerContainerName = "sample-hello";
@@ -41,26 +47,40 @@ namespace ManageContainerRegistry
 
             try
             {
+                // Get default subscription
+                SubscriptionResource subscription = await client.GetDefaultSubscriptionAsync();
+
+                // Create a resource group in the EastUS region
+                Utilities.Log($"creating resource group...");
+                ArmOperation<ResourceGroupResource> rgLro = await subscription.GetResourceGroups().CreateOrUpdateAsync(WaitUntil.Completed, rgName, new ResourceGroupData(AzureLocation.EastUS));
+                ResourceGroupResource resourceGroup = rgLro.Value;
+                _resourceGroupId = resourceGroup.Id;
+                Utilities.Log("Created a resource group with name: " + resourceGroup.Data.Name);
+
                 //=============================================================
                 // Create an Azure Container Registry to store and manage private Docker container images
 
                 Utilities.Log("Creating an Azure Container Registry");
 
-                IRegistry azureRegistry = azure.ContainerRegistries.Define(acrName)
-                        .WithRegion(region)
-                        .WithNewResourceGroup(rgName)
-                        .WithBasicSku()
-                        .WithRegistryNameAsAdminUser()
-                        .Create();
+                var registryData = new ContainerRegistryData(resourceGroup.Data.Location, new ContainerRegistrySku(ContainerRegistrySkuName.Premium))
+                {
+                    IsAdminUserEnabled = true,
+                    Sku = new ContainerRegistrySku(ContainerRegistrySkuName.Basic),
+                    Tags =
+                    {
+                        { "key1","value1"},
+                        { "key2","value2"}
+                    }
+                };
+                var lro = await resourceGroup.GetContainerRegistries().CreateOrUpdateAsync(WaitUntil.Completed, acrName, registryData);
+                ContainerRegistryResource containerRegistry = lro.Value;
 
-                Utilities.Print(azureRegistry);
-
-                var acrCredentials = azureRegistry.GetCredentials();
+                var acrCredentials = await containerRegistry.GetCredentialsAsync();
 
                 //=============================================================
                 // Create a Docker client that will be used to push/pull images to/from the Azure Container Registry
 
-                using (DockerClient dockerClient = DockerUtils.CreateDockerClient(azure, rgName, region))
+                using (DockerClient dockerClient = await DockerUtils.CreateDockerClient(resourceGroup))
                 {
                     var pullImgResult = dockerClient.Images.PullImage(
                         new Docker.DotNet.Models.ImagesPullParameters()
@@ -100,8 +120,8 @@ namespace ManageContainerRegistry
 
                     //=============================================================
                     // Commit the new container
-
-                    string privateRepoUrl = azureRegistry.LoginServerUrl + "/" + dockerImageRelPath + "/" + dockerContainerName;
+                    
+                    string privateRepoUrl = containerRegistry.Data.LoginServer + "/" + dockerImageRelPath + "/" + dockerContainerName;
                     Utilities.Log("Commiting image at: " + privateRepoUrl);
 
                     var commitContainerResult = dockerClient.Miscellaneous.CommitContainerChanges(
@@ -123,9 +143,9 @@ namespace ManageContainerRegistry
                         },
                         new Docker.DotNet.Models.AuthConfig()
                         {
-                            Username = acrCredentials.Username,
-                            Password = acrCredentials.AccessKeys[AccessKeyType.Primary],
-                            ServerAddress = azureRegistry.LoginServerUrl
+                            Username = acrCredentials.Value.Username,
+                            Password = acrCredentials.Value.Passwords.First().Value,
+                            ServerAddress = containerRegistry.Data.LoginServer
                         });
 
                     //=============================================================
@@ -139,9 +159,9 @@ namespace ManageContainerRegistry
                         },
                         new Docker.DotNet.Models.AuthConfig()
                         {
-                            Username = acrCredentials.Username,
-                            Password = acrCredentials.AccessKeys[AccessKeyType.Primary],
-                            ServerAddress = azureRegistry.LoginServerUrl
+                            Username = acrCredentials.Value.Username,
+                            Password = acrCredentials.Value.Passwords.First().Value,
+                            ServerAddress = containerRegistry.Data.LoginServer
                         });
 
                     Utilities.Log("List Docker images for: " + dockerClient.Configuration.EndpointBaseUri.AbsoluteUri);
@@ -178,9 +198,12 @@ namespace ManageContainerRegistry
             {
                 try
                 {
-                    Utilities.Log("Deleting Resource Group: " + rgName);
-                    azure.ResourceGroups.BeginDeleteByName(rgName);
-                    Utilities.Log("Deleted Resource Group: " + rgName);
+                    if (_resourceGroupId is not null)
+                    {
+                        Utilities.Log($"Deleting Resource Group: {_resourceGroupId}");
+                        await client.GetResourceGroupResource(_resourceGroupId).DeleteAsync(WaitUntil.Completed);
+                        Utilities.Log($"Deleted Resource Group: {_resourceGroupId}");
+                    }
                 }
                 catch (Exception)
                 {
@@ -189,24 +212,20 @@ namespace ManageContainerRegistry
             }
         }
 
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
             try
             {
                 //=================================================================
                 // Authenticate
-                AzureCredentials credentials = SdkContext.AzureCredentialsFactory.FromFile(Environment.GetEnvironmentVariable("AZURE_AUTH_LOCATION"));
+                var clientId = Environment.GetEnvironmentVariable("CLIENT_ID");
+                var clientSecret = Environment.GetEnvironmentVariable("CLIENT_SECRET");
+                var tenantId = Environment.GetEnvironmentVariable("TENANT_ID");
+                var subscription = Environment.GetEnvironmentVariable("SUBSCRIPTION_ID");
+                ClientSecretCredential credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
+                ArmClient client = new ArmClient(credential, subscription);
 
-                var azure = Azure
-                    .Configure()
-                    .WithLogLevel(HttpLoggingDelegatingHandler.Level.Basic)
-                    .Authenticate(credentials)
-                    .WithDefaultSubscription();
-
-                // Print selected subscription
-                Utilities.Log("Selected subscription: " + azure.SubscriptionId);
-
-                RunSample(azure);
+                await RunSample(client);
             }
             catch (Exception ex)
             {
